@@ -13,7 +13,6 @@ PASSWORD_MADRE = 'yspncrmxpdrtqgdc'
 IMAP_SERVER = 'imap.gmail.com'
 
 # --- TU ID DE ADMINISTRADOR ---
-# Reemplaza el 0 por tu ID real de Telegram (ejemplo: 123456789)
 ADMIN_ID = 6323259714
 
 # --- SISTEMA DE BASES DE DATOS (ACCESOS) ---
@@ -58,7 +57,23 @@ def buscar_en_correo(correo_cliente, tipo_busqueda):
             conectar_correo()
             conexion_mail.select('inbox')
 
-        status, mensajes = conexion_mail.search(None, f'(TO "{correo_cliente}" FROM "Netflix")')
+        # 1. Asignar la palabra clave del asunto dependiendo del comando
+        if tipo_busqueda == "link":
+            asunto = "hogar"
+        elif tipo_busqueda == "codigo6":
+            asunto = "vence"
+        elif tipo_busqueda == "codigo4":
+            asunto = "inicio"
+        elif tipo_busqueda == "temporal":
+            asunto = "temporal"
+        else:
+            asunto = ""
+
+        # 2. Buscar en Gmail filtrando por esa palabra exacta
+        if asunto != "":
+            status, mensajes = conexion_mail.search(None, f'(TO "{correo_cliente}" FROM "Netflix" SUBJECT "{asunto}")')
+        else:
+            status, mensajes = conexion_mail.search(None, f'(TO "{correo_cliente}" FROM "Netflix")')
         lista_ids = mensajes[0].split()
 
         if not lista_ids:
