@@ -12,8 +12,9 @@ EMAIL_MADRE = 'cosasmuni9@gmail.com'
 PASSWORD_MADRE = 'yspncrmxpdrtqgdc'
 IMAP_SERVER = 'imap.gmail.com'
 
-# --- TU ID DE ADMINISTRADOR ---
-ADMIN_ID = 6323259714
+# --- LISTA DE IDs DE ADMINISTRADORES ---
+# Puedes agregar todos los IDs de administradores que quieras dentro de los corchetes separados por comas
+ADMIN_IDS = [6323259714, 6916632826] 
 
 # --- SISTEMA DE BASES DE DATOS (ACCESOS) ---
 ARCHIVO_ACCESOS = 'accesos.json'
@@ -29,8 +30,8 @@ def guardar_accesos(datos):
         json.dump(datos, f)
 
 def tiene_acceso(user_id, correo):
-    if user_id == ADMIN_ID:
-        return True # El administrador siempre tiene acceso a todo
+    if user_id in ADMIN_IDS:
+        return True # Todos los administradores en la lista tienen acceso total
     accesos = cargar_accesos()
     user_str = str(user_id)
     if user_str in accesos:
@@ -47,6 +48,16 @@ def conectar_correo():
     conexion_mail.login(EMAIL_MADRE, PASSWORD_MADRE)
 
 conectar_correo()
+
+# Función segura para decodificar correos con tildes y caracteres especiales
+def decodificar_texto(payload_bytes):
+    try:
+        return payload_bytes.decode('utf-8')
+    except UnicodeDecodeError:
+        try:
+            return payload_bytes.decode('latin-1')
+        except:
+            return payload_bytes.decode('utf-8', errors='ignore')
 
 def buscar_en_correo(correo_cliente, tipo_busqueda):
     global conexion_mail
@@ -93,10 +104,14 @@ def buscar_en_correo(correo_cliente, tipo_busqueda):
         if mensaje_email.is_multipart():
             for part in mensaje_email.walk():
                 if part.get_content_type() == "text/plain" or part.get_content_type() == "text/html":
-                    cuerpo = part.get_payload(decode=True).decode('utf-8')
-                    break
+                    payload = part.get_payload(decode=True)
+                    if payload:
+                        cuerpo = decodificar_texto(payload)
+                        break
         else:
-            cuerpo = mensaje_email.get_payload(decode=True).decode('utf-8')
+            payload = mensaje_email.get_payload(decode=True)
+            if payload:
+                cuerpo = decodificar_texto(payload)
 
         # 3. Extracción de resultados según el comando solicitado
         if tipo_busqueda == "link":
@@ -118,11 +133,11 @@ def buscar_en_correo(correo_cliente, tipo_busqueda):
     except Exception as e:
         return f"Error de conexión: {e}"
 
-# --- COMANDOS DE ADMINISTRACIÓN (SOLO PARA TI) ---
+# --- COMANDOS DE ADMINISTRACIÓN (PARA TI Y TUS SOCIOS/ADMINS) ---
 
 @bot.message_handler(commands=['permitir'])
 def dar_permiso(message):
-    if message.from_user.id != ADMIN_ID:
+    if message.from_user.id not in ADMIN_IDS:
         bot.reply_to(message, "⛔ No tienes permisos para usar este comando.")
         return
     try:
@@ -143,7 +158,7 @@ def dar_permiso(message):
 
 @bot.message_handler(commands=['revocar'])
 def quitar_permiso(message):
-    if message.from_user.id != ADMIN_ID:
+    if message.from_user.id not in ADMIN_IDS:
         bot.reply_to(message, "⛔ No tienes permisos para usar este comando.")
         return
     try:
@@ -172,13 +187,13 @@ def enviar_bienvenida(message):
         "📋 *Lista de Comandos Disponibles:*\n"
         "• `/mi_id` - Muestra tu ID único de Telegram (para dárselo al vendedor).\n"
         "• `/link [correo]` - Obtiene el link de actualización de Hogar para TV (Netflix).\n"
-        "• `/codigo [correo]` - Obtiene el código de inicio de sesión de 4 dígitos (Netflix)[cite: 10].\n"
-        "• `/codigo6 [correo]` - Obtiene el código de inicio de 6 dígitos (Netflix)[cite: 10].\n"
-        "• `/temporal [correo]` - Obtiene el código temporal para dispositivos móviles (Netflix)[cite: 10].\n"
-        "• `/max [correo]` - Obtiene el código de verificación de 6 dígitos (Max / HBO Max)[cite: 10].\n\n"
+        "• `/codigo [correo]` - Obtiene el código de inicio de sesión de 4 dígitos (Netflix).\n"
+        "• `/codigo6 [correo]` - Obtiene el código de inicio de 6 dígitos (Netflix).\n"
+        "• `/temporal [correo]` - Obtiene el código temporal para dispositivos móviles (Netflix).\n"
+        "• `/max [correo]` - Obtiene el código de verificación de 6 dígitos (Max / HBO Max).\n\n"
         "💡 *Ejemplo de uso correcto:*\n"
         "`/max tu_correo@gmail.com`\n\n"
-        "⚠️ *Nota:* Debes tener una suscripción activa y tu ID registrado previamente por el administrador para poder solicitar códigos[cite: 10]."
+        "⚠️ *Nota:* Debes tener una suscripción activa y tu ID registrado previamente por el administrador para poder solicitar códigos."
     )
     bot.reply_to(message, texto_ayuda, parse_mode="Markdown")
 
@@ -218,7 +233,7 @@ def mandar_codigo6(message):
 
 @bot.message_handler(commands=['temporal'])
 def mandar_temporal(message):
-    procesar_peticion[cite: 10](message, "temporal")
+    procesar_peticion(message, "temporal")
 
 @bot.message_handler(commands=['max'])
 def mandar_max(message):
