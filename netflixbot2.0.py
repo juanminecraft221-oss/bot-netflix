@@ -66,14 +66,19 @@ def buscar_en_correo(correo_cliente, tipo_busqueda):
             asunto = "inicio"
         elif tipo_busqueda == "temporal":
             asunto = "temporal"
+        elif tipo_busqueda == "max":
+            asunto = "urgente" # Palabra clave exacta para Max
         else:
             asunto = ""
 
-        # 2. Buscar en Gmail filtrando por esa palabra exacta
-        if asunto != "":
+        # 2. Buscar en Gmail filtrando inteligentemente por remitente y asunto
+        if tipo_busqueda == "max":
+            status, mensajes = conexion_mail.search(None, f'(TO "{correo_cliente}" FROM "Max" SUBJECT "{asunto}")')
+        elif asunto != "":
             status, mensajes = conexion_mail.search(None, f'(TO "{correo_cliente}" FROM "Netflix" SUBJECT "{asunto}")')
         else:
             status, mensajes = conexion_mail.search(None, f'(TO "{correo_cliente}" FROM "Netflix")')
+            
         lista_ids = mensajes[0].split()
 
         if not lista_ids:
@@ -93,6 +98,7 @@ def buscar_en_correo(correo_cliente, tipo_busqueda):
         else:
             cuerpo = mensaje_email.get_payload(decode=True).decode('utf-8')
 
+        # 3. Extracción de resultados según el comando solicitado
         if tipo_busqueda == "link":
             match = re.search(r'(https://www\.netflix\.com/account/update.*?)["\s]', cuerpo)
             return f"✅ LINK DE HOGAR (TV):\n{match.group(1)}" if match else "❌ Link no encontrado en el correo."
@@ -105,6 +111,9 @@ def buscar_en_correo(correo_cliente, tipo_busqueda):
         elif tipo_busqueda == "temporal":
             match = re.search(r'\b\d{4}\b', cuerpo)
             return f"📱 ✅ CÓDIGO TEMPORAL (Celular): {match.group(0)}" if match else "❌ Código temporal no encontrado."
+        elif tipo_busqueda == "max":
+            match = re.search(r'\b\d{6}\b', cuerpo)
+            return f"🍿 ✅ CÓDIGO DE MAX (6 dígitos): {match.group(0)}" if match else "❌ Código de Max no encontrado en el correo."
 
     except Exception as e:
         return f"Error de conexión: {e}"
@@ -153,6 +162,27 @@ def quitar_permiso(message):
         bot.reply_to(message, "⚠️ Formato incorrecto. Usa: /revocar ID_CLIENTE correo@gmail.com")
 
 
+# --- COMANDO /START (GUÍA Y MENÚ PARA CLIENTES) ---
+
+@bot.message_handler(commands=['start'])
+def enviar_bienvenida(message):
+    texto_ayuda = (
+        "🤖 *¡Bienvenido al Bot Automático de Códigos!* 🎬🍿\n\n"
+        "Este bot te permite obtener los códigos y enlaces de acceso para tus cuentas de forma rápida y segura.\n\n"
+        "📋 *Lista de Comandos Disponibles:*\n"
+        "• `/mi_id` - Muestra tu ID único de Telegram (para dárselo al vendedor).\n"
+        "• `/link [correo]` - Obtiene el link de actualización de Hogar para TV (Netflix).\n"
+        "• `/codigo [correo]` - Obtiene el código de inicio de sesión de 4 dígitos (Netflix)[cite: 10].\n"
+        "• `/codigo6 [correo]` - Obtiene el código de inicio de 6 dígitos (Netflix)[cite: 10].\n"
+        "• `/temporal [correo]` - Obtiene el código temporal para dispositivos móviles (Netflix)[cite: 10].\n"
+        "• `/max [correo]` - Obtiene el código de verificación de 6 dígitos (Max / HBO Max)[cite: 10].\n\n"
+        "💡 *Ejemplo de uso correcto:*\n"
+        "`/max tu_correo@gmail.com`\n\n"
+        "⚠️ *Nota:* Debes tener una suscripción activa y tu ID registrado previamente por el administrador para poder solicitar códigos[cite: 10]."
+    )
+    bot.reply_to(message, texto_ayuda, parse_mode="Markdown")
+
+
 # --- COMANDOS PARA LOS CLIENTES ---
 
 @bot.message_handler(commands=['mi_id'])
@@ -188,6 +218,10 @@ def mandar_codigo6(message):
 
 @bot.message_handler(commands=['temporal'])
 def mandar_temporal(message):
-    procesar_peticion(message, "temporal")
+    procesar_peticion[cite: 10](message, "temporal")
+
+@bot.message_handler(commands=['max'])
+def mandar_max(message):
+    procesar_peticion(message, "max")
 
 bot.polling(none_stop=True)
