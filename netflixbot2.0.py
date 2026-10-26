@@ -58,7 +58,13 @@ def tiene_acceso(user_id, correo, plataforma):
     user_str = str(user_id)
     if user_str in accesos:
         permiso_requerido = f"{correo}:{plataforma}"
-        return permiso_requerido in accesos[user_str]
+        for item in accesos[user_str]:
+            # Compatible con el nuevo formato que guarda el creador
+            if isinstance(item, dict) and item.get("permiso") == permiso_requerido:
+                return True
+            # Compatible por si quedó algún registro antiguo en texto plano
+            elif isinstance(item, str) and item == permiso_requerido:
+                return True
     return False
 
 # --- CONEXIÓN AL CORREO ---
@@ -187,7 +193,27 @@ def quitar_admin(message):
         if admin_a_quitar in admins:
             admins.remove(admin_a_quitar)
             guardar_admins(admins)
-            bot.reply_to(message, f"❌ Administrador removido.\nEl ID {admin_a_quitar} ya no es administrador.")
+            
+            # --- BARRIDO AUTOMÁTICO DE CLIENTES DE ESTE ADMIN ---
+            accesos = cargar_accesos()
+            nuevos_accesos = {}
+            
+            for id_cli, lista_permisos in accesos.items():
+                permisos_restantes = []
+                for item in lista_permisos:
+                    # Si el permiso fue dado por el admin que estamos removiendo, lo omitimos
+                    if isinstance(item, dict) and item.get("admin") == admin_a_quitar:
+                        continue
+                    permisos_restantes.append(item)
+                
+                # Si al cliente le quedan permisos de otros admins, lo conservamos
+                if permisos_restantes:
+                    nuevos_accesos[id_cli] = permisos_restantes
+            
+            guardar_accesos(nuevos_accesos)
+            # ----------------------------------------------------
+            
+            bot.reply_to(message, f"❌ Administrador removido.\nEl ID {admin_a_quitar} ya no es admin y se limpiaron todos los clientes que él había registrado.")
         else:
             bot.reply_to(message, "⚠️ Ese ID no se encuentra en la lista de administradores secundarios.")
     except (IndexError, ValueError):
@@ -214,11 +240,24 @@ def dar_permiso(message):
         if id_cliente not in accesos:
             accesos[id_cliente] = []
             
-        permiso = f"{correo}:{plataforma}"
-        if permiso not in accesos[id_cliente]:
-            accesos[id_cliente].append(permiso)
+        permiso_str = f"{correo}:{plataforma}"
         
-        guardar_accesos(accesos)
+        # Comprobar si ya existe el permiso para evitar duplicados
+        existe = False
+        for item in accesos[id_cliente]:
+            p_val = item.get("permiso") if isinstance(item, dict) else item
+            if p_val == permiso_str:
+                existe = True
+                break
+                
+        if not existe:
+            # Guardamos el permiso junto con el ID del admin que lo otorgó
+            accesos[id_cliente].append({
+                "permiso": permiso_str,
+                "admin": message.from_user.id
+            })
+            guardar_accesos(accesos)
+        
         bot.reply_to(message, f"✅ Acceso concedido.\nEl ID {id_cliente} ahora puede usar *{plataforma.upper()}* en el correo {correo}.")
     except IndexError:
         bot.reply_to(message, "⚠️ Formato incorrecto.\nUsa: /permitir ID_CLIENTE correo@gmail.com netflix\no bien: /permitir ID_CLIENTE correo@gmail.com max")
@@ -235,12 +274,27 @@ def quitar_permiso(message):
         plataforma = partes[3].lower()
         
         accesos = cargar_accesos()
-        permiso = f"{correo}:{plataforma}"
+        permiso_str = f"{correo}:{plataforma}"
         
-        if id_cliente in accesos and permiso in accesos[id_cliente]:
-            accesos[id_cliente].remove(permiso)
-            guardar_accesos(accesos)
-            bot.reply_to(message, "❌ Acceso revocado correctamente.")
+        if id_cliente in accesos:
+            nuevos_permisos = []
+            encontrado = False
+            for item in accesos[id_cliente]:
+                p_val = item.get("permiso") if isinstance(item, dict) else item
+                if p_val == permiso_str:
+                    encontrado = True
+                else:
+                    nuevos_permisos.append(item)
+            
+            if encontrado:
+                if nuevos_permisos:
+                    accesos[id_cliente] = nuevos_permisos
+                else:
+                    del accesos[id_cliente]
+                guardar_accesos(accesos)
+                bot.reply_to(message, "❌ Acceso revocado correctamente.")
+            else:
+                bot.reply_to(message, "Ese usuario no tenía ese permiso registrado.")
         else:
             bot.reply_to(message, "Ese usuario no tenía ese permiso registrado.")
     except IndexError:
