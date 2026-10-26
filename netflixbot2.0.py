@@ -12,16 +12,19 @@ EMAIL_MADRE = 'cosasmuni9@gmail.com'
 PASSWORD_MADRE = 'yspncrmxpdrtqgdc'
 IMAP_SERVER = 'imap.gmail.com'
 
-# --- LISTA DE IDs DE ADMINISTRADORES ---
-ADMIN_IDS = [6323259714, 6916632826] 
+# --- TU ID DE ADMINISTRADOR PRINCIPAL (SUPER ADMIN) ---
+SUPER_ADMIN_ID = 6323259714
 
-# --- SISTEMA DE BASES DE DATOS INTELIGENTE (VOLUMEN O LOCAL) ---
+# --- SISTEMA DE ALMACENAMIENTO INTELIGENTE (VOLUMEN O LOCAL) ---
 if os.path.exists('/app') or os.getenv('RAILWAY_ENVIRONMENT') or os.getenv('RAILWAY_STATIC_URL'):
     os.makedirs('/app/data', exist_ok=True)
     ARCHIVO_ACCESOS = '/app/data/accesos.json'
+    ARCHIVO_ADMINS = '/app/data/admins.json'
 else:
     ARCHIVO_ACCESOS = 'accesos.json'
+    ARCHIVO_ADMINS = 'admins.json'
 
+# --- GESTIÓN DE ACCESOS DE CLIENTES ---
 def cargar_accesos():
     if os.path.exists(ARCHIVO_ACCESOS):
         with open(ARCHIVO_ACCESOS, 'r') as f:
@@ -32,9 +35,25 @@ def guardar_accesos(datos):
     with open(ARCHIVO_ACCESOS, 'w') as f:
         json.dump(datos, f)
 
+# --- GESTIÓN DE ADMINISTRADORES DINÁMICOS ---
+def cargar_admins():
+    if os.path.exists(ARCHIVO_ADMINS):
+        with open(ARCHIVO_ADMINS, 'r') as f:
+            return json.load(f)
+    return []
+
+def guardar_admins(datos):
+    with open(ARCHIVO_ADMINS, 'w') as f:
+        json.dump(datos, f)
+
+def es_admin(user_id):
+    if user_id == SUPER_ADMIN_ID:
+        return True
+    return user_id in cargar_admins()
+
 def tiene_acceso(user_id, correo, plataforma):
-    if user_id in ADMIN_IDS:
-        return True # Los admins tienen acceso total a todo
+    if es_admin(user_id):
+        return True # Los administradores tienen acceso total a todo
     accesos = cargar_accesos()
     user_str = str(user_id)
     if user_str in accesos:
@@ -134,11 +153,51 @@ def buscar_en_correo(correo_cliente, tipo_busqueda):
     except Exception as e:
         return f"Error de conexión: {e}"
 
-# --- COMANDOS DE ADMINISTRACIÓN ---
+# --- COMANDOS DE CONTROL DE ADMINISTRADORES (SOLO SUPER ADMIN) ---
+
+@bot.message_handler(commands=['agregar_admin'])
+def agregar_admin(message):
+    if message.from_user.id != SUPER_ADMIN_ID:
+        bot.reply_to(message, "⛔ Solo el Administrador Principal puede agregar nuevos administradores.")
+        return
+    try:
+        partes = message.text.split()
+        nuevo_id = int(partes[1])
+        
+        admins = cargar_admins()
+        if nuevo_id not in admins and nuevo_id != SUPER_ADMIN_ID:
+            admins.append(nuevo_id)
+            guardar_admins(admins)
+            bot.reply_to(message, f"✅ Administrador agregado con éxito.\nEl ID {nuevo_id} ahora tiene permisos de administración.")
+        else:
+            bot.reply_to(message, "⚠️ Este ID ya es administrador o es el principal.")
+    except (IndexError, ValueError):
+        bot.reply_to(message, "⚠️ Formato incorrecto. Usa: /agregar_admin ID_DE_TELEGRAM")
+
+@bot.message_handler(commands=['quitar_admin'])
+def quitar_admin(message):
+    if message.from_user.id != SUPER_ADMIN_ID:
+        bot.reply_to(message, "⛔ Solo el Administrador Principal puede quitar administradores.")
+        return
+    try:
+        partes = message.text.split()
+        admin_a_quitar = int(partes[1])
+        
+        admins = cargar_admins()
+        if admin_a_quitar in admins:
+            admins.remove(admin_a_quitar)
+            guardar_admins(admins)
+            bot.reply_to(message, f"❌ Administrador removido.\nEl ID {admin_a_quitar} ya no es administrador.")
+        else:
+            bot.reply_to(message, "⚠️ Ese ID no se encuentra en la lista de administradores secundarios.")
+    except (IndexError, ValueError):
+        bot.reply_to(message, "⚠️ Formato incorrecto. Usa: /quitar_admin ID_DE_TELEGRAM")
+
+# --- COMANDOS DE PERMISOS PARA CLIENTES (PARA ADMINS) ---
 
 @bot.message_handler(commands=['permitir'])
 def dar_permiso(message):
-    if message.from_user.id not in ADMIN_IDS:
+    if not es_admin(message.from_user.id):
         bot.reply_to(message, "⛔ No tienes permisos para usar este comando.")
         return
     try:
@@ -166,7 +225,7 @@ def dar_permiso(message):
 
 @bot.message_handler(commands=['revocar'])
 def quitar_permiso(message):
-    if message.from_user.id not in ADMIN_IDS:
+    if not es_admin(message.from_user.id):
         bot.reply_to(message, "⛔ No tienes permisos para usar este comando.")
         return
     try:
