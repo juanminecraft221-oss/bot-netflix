@@ -17,7 +17,7 @@ IMAP_SERVER = 'imap.gmail.com'
 ADMIN_IDS = [6323259714, 6916632826] 
 
 # --- SISTEMA DE BASES DE DATOS (ACCESOS) ---
-ARCHIVO_ACCESOS = 'accesos.json'
+ARCHIVO_ACCESOS = '/app/data/accesos.json'
 
 def cargar_accesos():
     if os.path.exists(ARCHIVO_ACCESOS):
