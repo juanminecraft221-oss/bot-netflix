@@ -13,10 +13,14 @@ PASSWORD_MADRE = 'yspncrmxpdrtqgdc'
 IMAP_SERVER = 'imap.gmail.com'
 
 # --- LISTA DE IDs DE ADMINISTRADORES ---
-ADMIN_IDS = [6323259714] 
+ADMIN_IDS = [6323259714, 6916632826] 
 
-# --- SISTEMA DE BASES DE DATOS (ACCESOS CON VOLUMEN PERMANENTE) ---
-ARCHIVO_ACCESOS = '/app/data/accesos.json'
+# --- SISTEMA DE BASES DE DATOS INTELIGENTE (VOLUMEN O LOCAL) ---
+if os.path.exists('/app') or os.getenv('RAILWAY_ENVIRONMENT') or os.getenv('RAILWAY_STATIC_URL'):
+    os.makedirs('/app/data', exist_ok=True)
+    ARCHIVO_ACCESOS = '/app/data/accesos.json'
+else:
+    ARCHIVO_ACCESOS = 'accesos.json'
 
 def cargar_accesos():
     if os.path.exists(ARCHIVO_ACCESOS):
@@ -34,7 +38,6 @@ def tiene_acceso(user_id, correo, plataforma):
     accesos = cargar_accesos()
     user_str = str(user_id)
     if user_str in accesos:
-        # Validamos que tenga permiso exactamente para ese correo Y esa plataforma
         permiso_requerido = f"{correo}:{plataforma}"
         return permiso_requerido in accesos[user_str]
     return False
@@ -142,7 +145,7 @@ def dar_permiso(message):
         partes = message.text.split()
         id_cliente = partes[1]
         correo = partes[2]
-        plataforma = partes[3].lower() # netflix o max
+        plataforma = partes[3].lower()
         
         if plataforma not in ["netflix", "max"]:
             bot.reply_to(message, "⚠️ Plataforma inválida. Debe ser exactamente: netflix o max")
@@ -211,7 +214,6 @@ def procesar_peticion(message, tipo, plataforma):
     try:
         correo_cliente = message.text.split()[1]
         
-        # VERIFICACIÓN DE SEGURIDAD ESTRICTA POR PLATAFORMA
         if not tiene_acceso(message.from_user.id, correo_cliente, plataforma):
             bot.reply_to(message, f"⛔ No tienes una suscripción activa para {plataforma.upper()} en este correo o no estás autorizado.")
             return
