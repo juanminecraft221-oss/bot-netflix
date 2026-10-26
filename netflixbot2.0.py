@@ -13,10 +13,9 @@ PASSWORD_MADRE = 'yspncrmxpdrtqgdc'
 IMAP_SERVER = 'imap.gmail.com'
 
 # --- LISTA DE IDs DE ADMINISTRADORES ---
-# Puedes agregar todos los IDs de administradores que quieras dentro de los corchetes separados por comas
-ADMIN_IDS = [6323259714, 6916632826] 
+ADMIN_IDS = [6323259714] 
 
-# --- SISTEMA DE BASES DE DATOS (ACCESOS) ---
+# --- SISTEMA DE BASES DE DATOS (ACCESOS CON VOLUMEN PERMANENTE) ---
 ARCHIVO_ACCESOS = '/app/data/accesos.json'
 
 def cargar_accesos():
@@ -29,13 +28,15 @@ def guardar_accesos(datos):
     with open(ARCHIVO_ACCESOS, 'w') as f:
         json.dump(datos, f)
 
-def tiene_acceso(user_id, correo):
+def tiene_acceso(user_id, correo, plataforma):
     if user_id in ADMIN_IDS:
-        return True # Todos los administradores en la lista tienen acceso total
+        return True # Los admins tienen acceso total a todo
     accesos = cargar_accesos()
     user_str = str(user_id)
     if user_str in accesos:
-        return correo in accesos[user_str]
+        # Validamos que tenga permiso exactamente para ese correo Y esa plataforma
+        permiso_requerido = f"{correo}:{plataforma}"
+        return permiso_requerido in accesos[user_str]
     return False
 
 # --- CONEXIÓN AL CORREO ---
@@ -49,7 +50,7 @@ def conectar_correo():
 
 conectar_correo()
 
-# Función segura para decodificar correos con tildes y caracteres especiales
+# Función segura para decodificar correos con tildes
 def decodificar_texto(payload_bytes):
     try:
         return payload_bytes.decode('utf-8')
@@ -68,7 +69,6 @@ def buscar_en_correo(correo_cliente, tipo_busqueda):
             conectar_correo()
             conexion_mail.select('inbox')
 
-        # 1. Asignar la palabra clave del asunto dependiendo del comando
         if tipo_busqueda == "link":
             asunto = "hogar"
         elif tipo_busqueda == "codigo6":
@@ -78,11 +78,10 @@ def buscar_en_correo(correo_cliente, tipo_busqueda):
         elif tipo_busqueda == "temporal":
             asunto = "temporal"
         elif tipo_busqueda == "max":
-            asunto = "urgente" # Palabra clave exacta para Max
+            asunto = "urgente"
         else:
             asunto = ""
 
-        # 2. Buscar en Gmail filtrando inteligentemente por remitente y asunto
         if tipo_busqueda == "max":
             status, mensajes = conexion_mail.search(None, f'(TO "{correo_cliente}" FROM "Max" SUBJECT "{asunto}")')
         elif asunto != "":
@@ -113,7 +112,6 @@ def buscar_en_correo(correo_cliente, tipo_busqueda):
             if payload:
                 cuerpo = decodificar_texto(payload)
 
-        # 3. Extracción de resultados según el comando solicitado
         if tipo_busqueda == "link":
             match = re.search(r'(https://www\.netflix\.com/account/update.*?)["\s]', cuerpo)
             return f"✅ LINK DE HOGAR (TV):\n{match.group(1)}" if match else "❌ Link no encontrado en el correo."
@@ -133,7 +131,7 @@ def buscar_en_correo(correo_cliente, tipo_busqueda):
     except Exception as e:
         return f"Error de conexión: {e}"
 
-# --- COMANDOS DE ADMINISTRACIÓN (PARA TI Y TUS SOCIOS/ADMINS) ---
+# --- COMANDOS DE ADMINISTRACIÓN ---
 
 @bot.message_handler(commands=['permitir'])
 def dar_permiso(message):
@@ -144,17 +142,24 @@ def dar_permiso(message):
         partes = message.text.split()
         id_cliente = partes[1]
         correo = partes[2]
+        plataforma = partes[3].lower() # netflix o max
+        
+        if plataforma not in ["netflix", "max"]:
+            bot.reply_to(message, "⚠️ Plataforma inválida. Debe ser exactamente: netflix o max")
+            return
         
         accesos = cargar_accesos()
         if id_cliente not in accesos:
             accesos[id_cliente] = []
-        if correo not in accesos[id_cliente]:
-            accesos[id_cliente].append(correo)
+            
+        permiso = f"{correo}:{plataforma}"
+        if permiso not in accesos[id_cliente]:
+            accesos[id_cliente].append(permiso)
         
         guardar_accesos(accesos)
-        bot.reply_to(message, f"✅ Acceso concedido.\nEl ID {id_cliente} ahora puede usar el correo {correo}.")
+        bot.reply_to(message, f"✅ Acceso concedido.\nEl ID {id_cliente} ahora puede usar *{plataforma.upper()}* en el correo {correo}.")
     except IndexError:
-        bot.reply_to(message, "⚠️ Formato incorrecto. Usa: /permitir ID_CLIENTE correo@gmail.com")
+        bot.reply_to(message, "⚠️ Formato incorrecto.\nUsa: /permitir ID_CLIENTE correo@gmail.com netflix\no bien: /permitir ID_CLIENTE correo@gmail.com max")
 
 @bot.message_handler(commands=['revocar'])
 def quitar_permiso(message):
@@ -165,52 +170,50 @@ def quitar_permiso(message):
         partes = message.text.split()
         id_cliente = partes[1]
         correo = partes[2]
+        plataforma = partes[3].lower()
         
         accesos = cargar_accesos()
-        if id_cliente in accesos and correo in accesos[id_cliente]:
-            accesos[id_cliente].remove(correo)
+        permiso = f"{correo}:{plataforma}"
+        
+        if id_cliente in accesos and permiso in accesos[id_cliente]:
+            accesos[id_cliente].remove(permiso)
             guardar_accesos(accesos)
-            bot.reply_to(message, f"❌ Acceso revocado.\nEl ID {id_cliente} ya no puede usar el correo {correo}.")
+            bot.reply_to(message, "❌ Acceso revocado correctamente.")
         else:
-            bot.reply_to(message, "Ese usuario no tenía acceso a ese correo.")
+            bot.reply_to(message, "Ese usuario no tenía ese permiso registrado.")
     except IndexError:
-        bot.reply_to(message, "⚠️ Formato incorrecto. Usa: /revocar ID_CLIENTE correo@gmail.com")
+        bot.reply_to(message, "⚠️ Formato incorrecto. Usa: /revocar ID_CLIENTE correo@gmail.com netflix (o max)")
 
-
-# --- COMANDO /START (GUÍA Y MENÚ PARA CLIENTES) ---
+# --- COMANDO /START ---
 
 @bot.message_handler(commands=['start'])
 def enviar_bienvenida(message):
     texto_ayuda = (
         "🤖 *¡Bienvenido al Bot Automático de Códigos!* 🎬🍿\n\n"
-        "Este bot te permite obtener los códigos y enlaces de acceso para tus cuentas de forma rápida y segura.\n\n"
-        "📋 *Lista de Comandos Disponibles:*\n"
-        "• `/mi_id` - Muestra tu ID único de Telegram (para dárselo al vendedor).\n"
-        "• `/link [correo]` - Obtiene el link de actualización de Hogar para TV (Netflix).\n"
-        "• `/codigo [correo]` - Obtiene el código de inicio de sesión de 4 dígitos (Netflix).\n"
-        "• `/codigo6 [correo]` - Obtiene el código de inicio de 6 dígitos (Netflix).\n"
-        "• `/temporal [correo]` - Obtiene el código temporal para dispositivos móviles (Netflix).\n"
-        "• `/max [correo]` - Obtiene el código de verificación de 6 dígitos (Max / HBO Max).\n\n"
-        "💡 *Ejemplo de uso correcto:*\n"
-        "`/max tu_correo@gmail.com`\n\n"
-        "⚠️ *Nota:* Debes tener una suscripción activa y tu ID registrado previamente por el administrador para poder solicitar códigos."
+        "📋 *Comandos Disponibles:*\n"
+        "• `/mi_id` - Muestra tu ID único de Telegram.\n"
+        "• `/link [correo]` - Link de hogar para TV (Netflix).\n"
+        "• `/codigo [correo]` - Código de inicio de 4 dígitos (Netflix).\n"
+        "• `/codigo6 [correo]` - Código de inicio de 6 dígitos (Netflix).\n"
+        "• `/temporal [correo]` - Código temporal para móvil (Netflix).\n"
+        "• `/max [correo]` - Código de verificación de Max.\n\n"
+        "⚠️ *Nota:* Solo podrás solicitar códigos de la plataforma que tengas contratada y autorizada."
     )
     bot.reply_to(message, texto_ayuda, parse_mode="Markdown")
 
-
-# --- COMANDOS PARA LOS CLIENTES ---
+# --- COMANDOS PARA CLIENTES ---
 
 @bot.message_handler(commands=['mi_id'])
 def mostrar_id(message):
     bot.reply_to(message, f"Tu ID de Telegram es: {message.from_user.id}")
 
-def procesar_peticion(message, tipo):
+def procesar_peticion(message, tipo, plataforma):
     try:
         correo_cliente = message.text.split()[1]
         
-        # VERIFICACIÓN DE SEGURIDAD
-        if not tiene_acceso(message.from_user.id, correo_cliente):
-            bot.reply_to(message, "⛔ No tienes una suscripción activa o no tienes permiso para ver los códigos de este correo.")
+        # VERIFICACIÓN DE SEGURIDAD ESTRICTA POR PLATAFORMA
+        if not tiene_acceso(message.from_user.id, correo_cliente, plataforma):
+            bot.reply_to(message, f"⛔ No tienes una suscripción activa para {plataforma.upper()} en este correo o no estás autorizado.")
             return
 
         bot.send_chat_action(message.chat.id, 'typing')
@@ -221,22 +224,22 @@ def procesar_peticion(message, tipo):
 
 @bot.message_handler(commands=['link'])
 def mandar_link(message):
-    procesar_peticion(message, "link")
+    procesar_peticion(message, "link", "netflix")
 
 @bot.message_handler(commands=['codigo'])
 def mandar_codigo4(message):
-    procesar_peticion(message, "codigo4")
+    procesar_peticion(message, "codigo4", "netflix")
 
 @bot.message_handler(commands=['codigo6'])
 def mandar_codigo6(message):
-    procesar_peticion(message, "codigo6")
+    procesar_peticion(message, "codigo6", "netflix")
 
 @bot.message_handler(commands=['temporal'])
 def mandar_temporal(message):
-    procesar_peticion(message, "temporal")
+    procesar_peticion(message, "temporal", "netflix")
 
 @bot.message_handler(commands=['max'])
 def mandar_max(message):
-    procesar_peticion(message, "max")
+    procesar_peticion(message, "max", "max")
 
 bot.polling(none_stop=True)
